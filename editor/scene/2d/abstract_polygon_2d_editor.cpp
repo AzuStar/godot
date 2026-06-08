@@ -41,6 +41,42 @@
 #include "scene/gui/button.h"
 #include "scene/gui/dialogs.h"
 
+namespace {
+
+void get_angle_lock_candidates(real_t p_angle, real_t p_step, real_t r_candidates[3]) {
+	const real_t snapped_angle = Math::snapped(p_angle, p_step);
+	r_candidates[0] = snapped_angle - p_step;
+	r_candidates[1] = snapped_angle;
+	r_candidates[2] = snapped_angle + p_step;
+}
+
+bool get_dual_angle_lock_candidate(const Vector2 &p_target, const Vector2 &p_anchor_a, real_t p_angle_a, const Vector2 &p_anchor_b, real_t p_angle_b, Vector2 &r_candidate) {
+	const Vector2 dir_a = Vector2::from_angle(p_angle_a);
+	const Vector2 dir_b = Vector2::from_angle(p_angle_b);
+
+	if (Math::is_zero_approx(dir_a.cross(dir_b))) {
+		if (!Math::is_zero_approx((p_anchor_b - p_anchor_a).cross(dir_a))) {
+			return false;
+		}
+
+		const Vector2 candidate = p_anchor_a + dir_a * (p_target - p_anchor_a).dot(dir_a);
+		if ((candidate - p_anchor_a).dot(dir_a) < -CMP_EPSILON || (candidate - p_anchor_b).dot(dir_b) < -CMP_EPSILON) {
+			return false;
+		}
+
+		r_candidate = candidate;
+		return true;
+	}
+
+	if (!Geometry2D::line_intersects_line(p_anchor_a, dir_a, p_anchor_b, dir_b, r_candidate)) {
+		return false;
+	}
+
+	return (r_candidate - p_anchor_a).dot(dir_a) >= -CMP_EPSILON && (r_candidate - p_anchor_b).dot(dir_b) >= -CMP_EPSILON;
+}
+
+} //namespace
+
 bool AbstractPolygon2DEditor::Vertex::operator==(const AbstractPolygon2DEditor::Vertex &p_vertex) const {
 	return polygon == p_vertex.polygon && vertex == p_vertex.vertex;
 }
@@ -75,12 +111,28 @@ bool AbstractPolygon2DEditor::_is_line() const {
 	return false;
 }
 
+bool AbstractPolygon2DEditor::_supports_angle_lock() const {
+	return false;
+}
+
 bool AbstractPolygon2DEditor::_has_uv() const {
 	return false;
 }
 
 int AbstractPolygon2DEditor::_get_polygon_count() const {
 	return 1;
+}
+
+int AbstractPolygon2DEditor::_get_point_count(int p_idx) const {
+	Vector<Vector2> vertices = _get_polygon(p_idx);
+	return vertices.size();
+}
+
+bool AbstractPolygon2DEditor::_get_point_position(int p_idx, int p_vertex, Vector2 &r_position) const {
+	Vector<Vector2> vertices = _get_polygon(p_idx);
+	ERR_FAIL_INDEX_V(p_vertex, vertices.size(), false);
+	r_position = vertices[p_vertex];
+	return true;
 }
 
 Variant AbstractPolygon2DEditor::_get_polygon(int p_idx) const {
@@ -334,6 +386,113 @@ bool AbstractPolygon2DEditor::_commit_drag() {
 	return true;
 }
 
+bool AbstractPolygon2DEditor::_get_angle_lock_anchor(const Vertex &p_vertex, const Vector<Vector2> *p_vertices, Vector2 &r_anchor) const {
+	if (!_supports_angle_lock() || !canvas_item_editor->is_angle_lock_enabled() || p_vertex.polygon < 0 || p_vertex.vertex < 0) {
+		return false;
+	}
+
+	const int n_points = p_vertices ? p_vertices->size() : _get_point_count(p_vertex.polygon);
+	if (n_points < 1 || p_vertex.vertex > n_points) {
+		return false;
+	}
+
+	const Vector2 offset = _get_offset(p_vertex.polygon);
+	if (p_vertex.vertex > 0) {
+		if (p_vertices) {
+			r_anchor = (*p_vertices)[p_vertex.vertex - 1] + offset;
+			return true;
+		}
+		if (_get_point_position(p_vertex.polygon, p_vertex.vertex - 1, r_anchor)) {
+			r_anchor += offset;
+			return true;
+		}
+		return false;
+	}
+
+	if (n_points > 1) {
+		if (p_vertices) {
+			r_anchor = (*p_vertices)[1] + offset;
+			return true;
+		}
+		if (_get_point_position(p_vertex.polygon, 1, r_anchor)) {
+			r_anchor += offset;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool AbstractPolygon2DEditor::_get_secondary_angle_lock_anchor(int p_polygon, int p_vertex, const Vector<Vector2> *p_vertices, Vector2 &r_anchor) const {
+	return false;
+}
+
+Vector2 AbstractPolygon2DEditor::_snap_point(const Vector2 &p_viewport_point, const Vertex &p_vertex, const Vector<Vector2> *p_vertices) const {
+	Vector2 cpoint = canvas_item_editor->snap_point(canvas_item_editor->get_canvas_transform().affine_inverse().xform(p_viewport_point));
+	cpoint = _get_node()->get_screen_transform().affine_inverse().xform(cpoint);
+
+	if (!_supports_angle_lock() || !canvas_item_editor->is_angle_lock_enabled()) {
+		return cpoint;
+	}
+
+	if (!p_vertices && p_vertex.polygon < 0) {
+		return cpoint;
+	}
+
+	Vector2 anchor;
+	if (!_get_angle_lock_anchor(p_vertex, p_vertices, anchor)) {
+		return cpoint;
+	}
+
+	const Vector2 primary_locked_point = canvas_item_editor->snap_point_to_angle_lock(cpoint, anchor);
+
+	Vector2 secondary_anchor;
+	if (!_get_secondary_angle_lock_anchor(p_vertex.polygon, p_vertex.vertex, p_vertices, secondary_anchor)) {
+		return primary_locked_point;
+	}
+
+	const real_t step = canvas_item_editor->get_angle_lock_step();
+	if (step <= CMP_EPSILON) {
+		return primary_locked_point;
+	}
+
+	const Vector2 secondary_locked_point = canvas_item_editor->snap_point_to_angle_lock(cpoint, secondary_anchor);
+
+	real_t primary_candidates[3];
+	real_t secondary_candidates[3];
+	get_angle_lock_candidates((cpoint - anchor).angle(), step, primary_candidates);
+	get_angle_lock_candidates((cpoint - secondary_anchor).angle(), step, secondary_candidates);
+
+	bool found_candidate = false;
+	Vector2 best_candidate;
+	real_t best_distance_sq = 0.0;
+
+	for (real_t primary_angle : primary_candidates) {
+		for (real_t secondary_angle : secondary_candidates) {
+			Vector2 candidate;
+			if (!get_dual_angle_lock_candidate(cpoint, anchor, primary_angle, secondary_anchor, secondary_angle, candidate)) {
+				continue;
+			}
+
+			const real_t distance_sq = candidate.distance_squared_to(cpoint);
+			if (!found_candidate || distance_sq < best_distance_sq) {
+				best_candidate = candidate;
+				best_distance_sq = distance_sq;
+				found_candidate = true;
+			}
+		}
+	}
+
+	if (found_candidate) {
+		return best_candidate;
+	}
+
+	if (primary_locked_point.distance_squared_to(cpoint) <= secondary_locked_point.distance_squared_to(cpoint)) {
+		return primary_locked_point;
+	}
+	return secondary_locked_point;
+}
+
 bool AbstractPolygon2DEditor::forward_gui_input(const Ref<InputEvent> &p_event) {
 	if (!_get_node() || !_polygon_editing_enabled) {
 		return false;
@@ -368,8 +527,7 @@ bool AbstractPolygon2DEditor::forward_gui_input(const Ref<InputEvent> &p_event) 
 		Transform2D xform = canvas_item_editor->get_canvas_transform() * _get_node()->get_screen_transform();
 
 		Vector2 gpoint = mb->get_position();
-		Vector2 cpoint = canvas_item_editor->snap_point(canvas_item_editor->get_canvas_transform().affine_inverse().xform(gpoint));
-		cpoint = _get_node()->get_screen_transform().affine_inverse().xform(cpoint);
+		Vector2 cpoint = _snap_point(gpoint);
 
 		if (mode == MODE_EDIT || (_is_line() && mode == MODE_CREATE)) {
 			if (mb->get_button_index() == MouseButton::LEFT) {
@@ -395,7 +553,8 @@ bool AbstractPolygon2DEditor::forward_gui_input(const Ref<InputEvent> &p_event) 
 							Vector<Vector2> vertices = _get_polygon(insert.polygon);
 
 							if (vertices.size() < (_is_line() ? 2 : 3)) {
-								vertices.push_back(cpoint);
+								const Vertex new_vertex(insert.polygon, vertices.size());
+								vertices.push_back(_snap_point(gpoint, new_vertex, &vertices));
 								undo_redo->create_action(TTR("Edit Polygon"));
 								selected_point = Vertex(insert.polygon, vertices.size());
 								_action_set_polygon(insert.polygon, vertices);
@@ -455,7 +614,8 @@ bool AbstractPolygon2DEditor::forward_gui_input(const Ref<InputEvent> &p_event) 
 				if (_is_line()) {
 					// for lines, we don't have a wip mode, and we can undo each single add point.
 					Vector<Vector2> vertices = _get_polygon(0);
-					vertices.push_back(cpoint);
+					const Vertex new_vertex(0, vertices.size());
+					vertices.push_back(_snap_point(gpoint, new_vertex, &vertices));
 					undo_redo->create_action(TTR("Insert Point"));
 					_action_set_polygon(0, vertices);
 					_commit_action();
@@ -547,11 +707,11 @@ bool AbstractPolygon2DEditor::forward_gui_input(const Ref<InputEvent> &p_event) 
 			}
 			center_drag_origin = cpoint;
 		} else if (edited_point.valid() && (wip_active || mm->get_button_mask().has_flag(MouseButtonMask::LEFT))) {
-			Vector2 cpoint = canvas_item_editor->snap_point(canvas_item_editor->get_canvas_transform().affine_inverse().xform(gpoint));
-			cpoint = _get_node()->get_screen_transform().affine_inverse().xform(cpoint);
+			const bool use_point_angle_lock = _supports_angle_lock() && canvas_item_editor->is_angle_lock_enabled();
+			Vector2 cpoint = _snap_point(gpoint, use_point_angle_lock ? edited_point : Vertex());
 
 			//Move the point in a single axis. Should only work when editing a polygon and while holding shift.
-			if (mode == MODE_EDIT && mm->is_shift_pressed()) {
+			if (mode == MODE_EDIT && mm->is_shift_pressed() && !use_point_angle_lock) {
 				Vector2 old_point = pre_move_edit.get(selected_point.vertex);
 				if (Math::abs(cpoint.x - old_point.x) > Math::abs(cpoint.y - old_point.y)) {
 					cpoint.y = old_point.y;

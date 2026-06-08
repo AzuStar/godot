@@ -117,6 +117,9 @@ protected:
 	void _node_removed(Node *p_node);
 
 	bool _commit_drag();
+	Vector2 _snap_point(const Vector2 &p_viewport_point, const Vertex &p_vertex = Vertex(), const Vector<Vector2> *p_vertices = nullptr) const;
+	bool _get_angle_lock_anchor(const Vertex &p_vertex, const Vector<Vector2> *p_vertices, Vector2 &r_anchor) const;
+	virtual bool _get_secondary_angle_lock_anchor(int p_polygon, int p_vertex, const Vector<Vector2> *p_vertices, Vector2 &r_anchor) const;
 
 	void remove_point(const Vertex &p_vertex);
 	Vertex get_active_point() const;
@@ -129,9 +132,12 @@ protected:
 	virtual void _set_node(Node *p_polygon) = 0;
 
 	virtual bool _is_line() const;
+	virtual bool _supports_angle_lock() const;
 	virtual bool _has_uv() const;
 	virtual int _get_polygon_count() const;
 	virtual Vector2 _get_offset(int p_idx) const;
+	virtual int _get_point_count(int p_idx) const;
+	virtual bool _get_point_position(int p_idx, int p_vertex, Vector2 &r_position) const;
 	virtual Variant _get_polygon(int p_idx) const;
 	virtual void _set_polygon(int p_idx, const Variant &p_polygon) const;
 

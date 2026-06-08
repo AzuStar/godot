@@ -44,6 +44,46 @@ bool Line2DEditor::_is_line() const {
 	return true;
 }
 
+bool Line2DEditor::_supports_angle_lock() const {
+	return true;
+}
+
+bool Line2DEditor::_get_secondary_angle_lock_anchor(int p_polygon, int p_vertex, const Vector<Vector2> *p_vertices, Vector2 &r_anchor) const {
+	if (node->is_closed() || p_polygon != 0 || p_vertex <= 0) {
+		return false;
+	}
+
+	const int n_points = p_vertices ? p_vertices->size() : node->get_point_count();
+	if (p_vertex >= n_points - 1) {
+		return false;
+	}
+
+	const Vector2 offset = _get_offset(p_polygon);
+	if (p_vertices) {
+		r_anchor = (*p_vertices)[p_vertex + 1] + offset;
+		return true;
+	}
+
+	if (_get_point_position(p_polygon, p_vertex + 1, r_anchor)) {
+		r_anchor += offset;
+		return true;
+	}
+
+	return false;
+}
+
+int Line2DEditor::_get_point_count(int p_idx) const {
+	ERR_FAIL_COND_V(p_idx != 0, 0);
+	return node->get_point_count();
+}
+
+bool Line2DEditor::_get_point_position(int p_idx, int p_vertex, Vector2 &r_position) const {
+	ERR_FAIL_COND_V(p_idx != 0, false);
+	ERR_FAIL_INDEX_V(p_vertex, node->get_point_count(), false);
+	r_position = node->get_point_position(p_vertex);
+	return true;
+}
+
 Variant Line2DEditor::_get_polygon(int p_idx) const {
 	return _get_node()->get("points");
 }

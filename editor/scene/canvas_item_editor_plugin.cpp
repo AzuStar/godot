@@ -88,6 +88,7 @@ class SnapDialog : public ConfirmationDialog {
 	SpinBox *rotation_offset;
 	SpinBox *rotation_step;
 	SpinBox *scale_step;
+	SpinBox *angle_lock_step;
 
 public:
 	SnapDialog() {
@@ -224,6 +225,21 @@ public:
 		rotation_step->set_accessibility_name(TTRC("Rotation Step:"));
 		child_container->add_child(rotation_step);
 
+		label = memnew(Label);
+		label->set_text(TTRC("Angle Lock Step:"));
+		child_container->add_child(label);
+		label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+
+		angle_lock_step = memnew(SpinBox);
+		angle_lock_step->set_min(0.001);
+		angle_lock_step->set_max(SPIN_BOX_ROTATION_RANGE);
+		angle_lock_step->set_step(0.1);
+		angle_lock_step->set_suffix(U"°");
+		angle_lock_step->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+		angle_lock_step->set_select_all_on_focus(true);
+		angle_lock_step->set_accessibility_name(TTRC("Angle Lock Step:"));
+		child_container->add_child(angle_lock_step);
+
 		container->add_child(memnew(HSeparator));
 
 		child_container = memnew(GridContainer);
@@ -245,7 +261,7 @@ public:
 		child_container->add_child(scale_step);
 	}
 
-	void set_fields(const Point2 p_grid_offset, const Point2 p_grid_step, const Vector2i p_primary_grid_step, const real_t p_rotation_offset, const real_t p_rotation_step, const real_t p_scale_step) {
+	void set_fields(const Point2 p_grid_offset, const Point2 p_grid_step, const Vector2i p_primary_grid_step, const real_t p_rotation_offset, const real_t p_rotation_step, const real_t p_scale_step, const real_t p_angle_lock_step) {
 		grid_offset_x->set_value(p_grid_offset.x);
 		grid_offset_y->set_value(p_grid_offset.y);
 		grid_step_x->set_value(p_grid_step.x);
@@ -255,15 +271,17 @@ public:
 		rotation_offset->set_value(Math::rad_to_deg(p_rotation_offset));
 		rotation_step->set_value(Math::rad_to_deg(p_rotation_step));
 		scale_step->set_value(p_scale_step);
+		angle_lock_step->set_value(Math::rad_to_deg(p_angle_lock_step));
 	}
 
-	void get_fields(Point2 &p_grid_offset, Point2 &p_grid_step, Vector2i &p_primary_grid_step, real_t &p_rotation_offset, real_t &p_rotation_step, real_t &p_scale_step) {
+	void get_fields(Point2 &p_grid_offset, Point2 &p_grid_step, Vector2i &p_primary_grid_step, real_t &p_rotation_offset, real_t &p_rotation_step, real_t &p_scale_step, real_t &p_angle_lock_step) {
 		p_grid_offset = Point2(grid_offset_x->get_value(), grid_offset_y->get_value());
 		p_grid_step = Point2(grid_step_x->get_value(), grid_step_y->get_value());
 		p_primary_grid_step = Vector2i(primary_grid_step_x->get_value(), primary_grid_step_y->get_value());
 		p_rotation_offset = Math::deg_to_rad(rotation_offset->get_value());
 		p_rotation_step = Math::deg_to_rad(rotation_step->get_value());
 		p_scale_step = scale_step->get_value();
+		p_angle_lock_step = Math::deg_to_rad(angle_lock_step->get_value());
 	}
 };
 
@@ -503,6 +521,29 @@ real_t CanvasItemEditor::snap_angle(real_t p_target, real_t p_start) const {
 	} else {
 		return p_target;
 	}
+}
+
+Point2 CanvasItemEditor::snap_point_to_angle_lock(Point2 p_target, Point2 p_anchor) const {
+	const real_t step = Math::abs(angle_lock_step);
+	if (!use_angle_lock || step <= CMP_EPSILON) {
+		return p_target;
+	}
+
+	const Vector2 delta = p_target - p_anchor;
+	if (delta.is_zero_approx()) {
+		return p_target;
+	}
+
+	const real_t angle = Math::snapped(delta.angle(), step);
+	return p_anchor + Vector2::from_angle(angle) * delta.length();
+}
+
+real_t CanvasItemEditor::get_angle_lock_step() const {
+	return Math::abs(angle_lock_step);
+}
+
+bool CanvasItemEditor::is_angle_lock_enabled() const {
+	return use_angle_lock && Math::abs(angle_lock_step) > CMP_EPSILON;
 }
 
 void CanvasItemEditor::shortcut_input(const Ref<InputEvent> &p_ev) {
@@ -956,7 +997,7 @@ void CanvasItemEditor::_commit_canvas_item_state(const List<CanvasItem *> &p_can
 }
 
 void CanvasItemEditor::_snap_changed() {
-	static_cast<SnapDialog *>(snap_dialog)->get_fields(grid_offset, grid_step, primary_grid_step, snap_rotation_offset, snap_rotation_step, snap_scale_step);
+	static_cast<SnapDialog *>(snap_dialog)->get_fields(grid_offset, grid_step, primary_grid_step, snap_rotation_offset, snap_rotation_step, snap_scale_step, angle_lock_step);
 
 	EditorSettings::get_singleton()->set_project_metadata("2d_editor", "grid_offset", grid_offset);
 	EditorSettings::get_singleton()->set_project_metadata("2d_editor", "grid_step", grid_step);
@@ -964,6 +1005,7 @@ void CanvasItemEditor::_snap_changed() {
 	EditorSettings::get_singleton()->set_project_metadata("2d_editor", "snap_rotation_offset", snap_rotation_offset);
 	EditorSettings::get_singleton()->set_project_metadata("2d_editor", "snap_rotation_step", snap_rotation_step);
 	EditorSettings::get_singleton()->set_project_metadata("2d_editor", "snap_scale_step", snap_scale_step);
+	EditorSettings::get_singleton()->set_project_metadata("2d_editor", "angle_lock_step", angle_lock_step);
 
 	grid_step_multiplier = 0;
 	viewport->queue_redraw();
@@ -4848,6 +4890,12 @@ void CanvasItemEditor::_popup_callback(int p_op) {
 			int idx = snap_config_menu->get_popup()->get_item_index(SNAP_USE_SCALE);
 			snap_config_menu->get_popup()->set_item_checked(idx, snap_scale);
 		} break;
+		case SNAP_USE_ANGLE_LOCK: {
+			use_angle_lock = !use_angle_lock;
+			int idx = snap_config_menu->get_popup()->get_item_index(SNAP_USE_ANGLE_LOCK);
+			snap_config_menu->get_popup()->set_item_checked(idx, use_angle_lock);
+			EditorSettings::get_singleton()->set_project_metadata("2d_editor", "use_angle_lock", use_angle_lock);
+		} break;
 		case SNAP_RELATIVE: {
 			snap_relative = !snap_relative;
 			int idx = snap_config_menu->get_popup()->get_item_index(SNAP_RELATIVE);
@@ -4860,7 +4908,7 @@ void CanvasItemEditor::_popup_callback(int p_op) {
 			snap_config_menu->get_popup()->set_item_checked(idx, snap_pixel);
 		} break;
 		case SNAP_CONFIGURE: {
-			static_cast<SnapDialog *>(snap_dialog)->set_fields(grid_offset, grid_step, primary_grid_step, snap_rotation_offset, snap_rotation_step, snap_scale_step);
+			static_cast<SnapDialog *>(snap_dialog)->set_fields(grid_offset, grid_step, primary_grid_step, snap_rotation_offset, snap_rotation_step, snap_scale_step, angle_lock_step);
 			snap_dialog->popup_centered(Size2(320, 160) * EDSCALE);
 		} break;
 		case SKELETON_SHOW_BONES: {
@@ -5242,6 +5290,7 @@ Dictionary CanvasItemEditor::get_state() const {
 	state["snap_rotation_offset"] = snap_rotation_offset;
 	state["snap_rotation_step"] = snap_rotation_step;
 	state["snap_scale_step"] = snap_scale_step;
+	state["angle_lock_step"] = angle_lock_step;
 	state["smart_snap_active"] = smart_snap_active;
 	state["grid_snap_active"] = grid_snap_active;
 	state["snap_node_parent"] = snap_node_parent;
@@ -5263,6 +5312,7 @@ Dictionary CanvasItemEditor::get_state() const {
 	state["show_transformation_gizmos"] = show_transformation_gizmos;
 	state["snap_rotation"] = snap_rotation;
 	state["snap_scale"] = snap_scale;
+	state["use_angle_lock"] = use_angle_lock;
 	state["snap_relative"] = snap_relative;
 	state["snap_pixel"] = snap_pixel;
 	return state;
@@ -5316,6 +5366,10 @@ void CanvasItemEditor::set_state(const Dictionary &p_state) {
 
 	if (state.has("snap_scale_step")) {
 		snap_scale_step = state["snap_scale_step"];
+	}
+
+	if (state.has("angle_lock_step")) {
+		angle_lock_step = state["angle_lock_step"];
 	}
 
 	if (state.has("smart_snap_active")) {
@@ -5440,6 +5494,12 @@ void CanvasItemEditor::set_state(const Dictionary &p_state) {
 		snap_config_menu->get_popup()->set_item_checked(idx, snap_scale);
 	}
 
+	if (state.has("use_angle_lock")) {
+		use_angle_lock = state["use_angle_lock"];
+		int idx = snap_config_menu->get_popup()->get_item_index(SNAP_USE_ANGLE_LOCK);
+		snap_config_menu->get_popup()->set_item_checked(idx, use_angle_lock);
+	}
+
 	if (state.has("snap_relative")) {
 		snap_relative = state["snap_relative"];
 		int idx = snap_config_menu->get_popup()->get_item_index(SNAP_RELATIVE);
@@ -5472,6 +5532,12 @@ void CanvasItemEditor::clear() {
 	snap_rotation_step = EditorSettings::get_singleton()->get_project_metadata("2d_editor", "snap_rotation_step", Math::deg_to_rad(15.0));
 	snap_rotation_offset = EditorSettings::get_singleton()->get_project_metadata("2d_editor", "snap_rotation_offset", 0.0);
 	snap_scale_step = EditorSettings::get_singleton()->get_project_metadata("2d_editor", "snap_scale_step", 0.1);
+	use_angle_lock = EditorSettings::get_singleton()->get_project_metadata("2d_editor", "use_angle_lock", false);
+	angle_lock_step = EditorSettings::get_singleton()->get_project_metadata("2d_editor", "angle_lock_step", Math::deg_to_rad(45.0));
+	if (snap_config_menu) {
+		int idx = snap_config_menu->get_popup()->get_item_index(SNAP_USE_ANGLE_LOCK);
+		snap_config_menu->get_popup()->set_item_checked(idx, use_angle_lock);
+	}
 
 	if (auto_resampling_enabled) {
 		if (resample_timer->is_inside_tree()) {
@@ -5820,6 +5886,7 @@ CanvasItemEditor::CanvasItemEditor() {
 	p->set_hide_on_checkable_item_selection(false);
 	p->add_check_shortcut(ED_SHORTCUT("canvas_item_editor/use_rotation_snap", TTRC("Use Rotation Snap")), SNAP_USE_ROTATION);
 	p->add_check_shortcut(ED_SHORTCUT("canvas_item_editor/use_scale_snap", TTRC("Use Scale Snap")), SNAP_USE_SCALE);
+	p->add_check_shortcut(ED_SHORTCUT("canvas_item_editor/use_angle_lock", TTRC("Use Angle Lock")), SNAP_USE_ANGLE_LOCK);
 	p->add_check_shortcut(ED_SHORTCUT("canvas_item_editor/snap_relative", TTRC("Snap Relative")), SNAP_RELATIVE);
 	p->add_check_shortcut(ED_SHORTCUT("canvas_item_editor/use_pixel_snap", TTRC("Use Pixel Snap")), SNAP_USE_PIXEL);
 

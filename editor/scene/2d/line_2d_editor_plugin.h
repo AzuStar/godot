@@ -43,6 +43,10 @@ protected:
 	virtual void _set_node(Node *p_line) override;
 
 	virtual bool _is_line() const override;
+	virtual bool _supports_angle_lock() const override;
+	virtual bool _get_secondary_angle_lock_anchor(int p_polygon, int p_vertex, const Vector<Vector2> *p_vertices, Vector2 &r_anchor) const override;
+	virtual int _get_point_count(int p_idx) const override;
+	virtual bool _get_point_position(int p_idx, int p_vertex, Vector2 &r_position) const override;
 	virtual Variant _get_polygon(int p_idx) const override;
 	virtual void _set_polygon(int p_idx, const Variant &p_polygon) const override;
 	virtual void _action_set_polygon(int p_idx, const Variant &p_previous, const Variant &p_polygon) override;

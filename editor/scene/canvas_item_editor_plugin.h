@@ -117,6 +117,7 @@ private:
 		SNAP_USE_GUIDES,
 		SNAP_USE_ROTATION,
 		SNAP_USE_SCALE,
+		SNAP_USE_ANGLE_LOCK,
 		SNAP_RELATIVE,
 		SNAP_CONFIGURE,
 		SNAP_USE_PIXEL,
@@ -244,6 +245,7 @@ private:
 	real_t snap_rotation_step = 0.0;
 	real_t snap_rotation_offset = 0.0;
 	real_t snap_scale_step = 0.0;
+	real_t angle_lock_step = 0.0;
 	bool use_local_space = true;
 	bool smart_snap_active = false;
 	bool grid_snap_active = false;
@@ -256,6 +258,7 @@ private:
 	bool snap_guides = true;
 	bool snap_rotation = false;
 	bool snap_scale = false;
+	bool use_angle_lock = false;
 	bool snap_relative = false;
 	// Enable pixel snapping even if pixel snap rendering is disabled in the Project Settings.
 	// This results in crisper visuals by preventing 2D nodes from being placed at subpixel coordinates.
@@ -577,6 +580,9 @@ public:
 
 	Point2 snap_point(Point2 p_target, unsigned int p_modes = SNAP_DEFAULT, unsigned int p_forced_modes = 0, const CanvasItem *p_self_canvas_item = nullptr, const List<CanvasItem *> &p_other_nodes_exceptions = List<CanvasItem *>());
 	real_t snap_angle(real_t p_target, real_t p_start = 0) const;
+	Point2 snap_point_to_angle_lock(Point2 p_target, Point2 p_anchor) const;
+	real_t get_angle_lock_step() const;
+	bool is_angle_lock_enabled() const;
 
 	Transform2D get_canvas_transform() const { return transform; }
 
