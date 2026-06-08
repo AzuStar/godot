@@ -32,6 +32,7 @@
 
 #include "core/object/class_db.h"
 #include "scene/main/node.h"
+#include "scene/property_utils.h"
 #include "scene/resources/packed_scene.h"
 
 #include "tests/test_macros.h"
@@ -623,6 +624,45 @@ TEST_CASE("[SceneTree][Node]Exported node checks") {
 			}
 		}
 		CHECK_EQ(stored_properties, 2);
+	}
+
+	SUBCASE("Refreshing editable instance state should clear exported node override diff") {
+		Ref<PackedScene> ps;
+		ps.instantiate();
+		ps->pack(node);
+		ps->set_path(TestUtils::get_temp_path("test_scene.tscn"));
+
+		Node *root = memnew(Node);
+
+		TestNode *sub_child = Object::cast_to<TestNode>(ps->instantiate(PackedScene::GEN_EDIT_STATE_MAIN));
+		root->add_child(sub_child);
+		sub_child->set_owner(root);
+		root->set_editable_instance(sub_child, true);
+
+		Node *instanced_child = sub_child->get_child(0, false);
+		CHECK(root->is_editable_instance(instanced_child->get_owner()));
+
+		sub_child->set("exported_node", sub_child->get_child(1, false));
+
+		Vector<SceneState::PackState> states_stack = PropertyUtils::get_node_states_stack(sub_child, root);
+		bool is_valid_default = false;
+		Variant default_value = PropertyUtils::get_property_default_value(sub_child, SNAME("exported_node"), &is_valid_default, &states_stack);
+		CHECK(is_valid_default);
+		CHECK(PropertyUtils::is_property_value_different(sub_child, sub_child->get("exported_node"), default_value));
+
+		node->set("exported_node", child2);
+		ps->pack(node);
+		Node *cache_builder = ps->instantiate(PackedScene::GEN_EDIT_STATE_MAIN);
+		memdelete(cache_builder);
+		sub_child->set_scene_instance_state(ps->get_state());
+
+		states_stack = PropertyUtils::get_node_states_stack(sub_child, root);
+		is_valid_default = false;
+		default_value = PropertyUtils::get_property_default_value(sub_child, SNAME("exported_node"), &is_valid_default, &states_stack);
+		CHECK(is_valid_default);
+		CHECK_FALSE(PropertyUtils::is_property_value_different(sub_child, sub_child->get("exported_node"), default_value));
+
+		memdelete(root);
 	}
 #endif // TOOLS_ENABLED
 

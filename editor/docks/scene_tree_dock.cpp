@@ -53,6 +53,7 @@
 #include "editor/inspector/multi_node_edit.h"
 #include "editor/scene/3d/node_3d_editor_plugin.h"
 #include "editor/scene/canvas_item_editor_plugin.h"
+#include "editor/scene/editable_instance_apply.h"
 #include "editor/scene/rename_dialog.h"
 #include "editor/scene/reparent_dialog.h"
 #include "editor/script/script_editor_plugin.h"
@@ -1329,6 +1330,26 @@ void SceneTreeDock::_tool_selected(int p_tool, bool p_confirm_override) {
 					}
 					_toggle_editable_children(node);
 				}
+			}
+		} break;
+		case TOOL_SCENE_APPLY_TO_ORIGINAL: {
+			if (!profile_allow_editing) {
+				break;
+			}
+
+			const List<Node *> selection = editor_selection->get_top_selected_node_list();
+			if (selection.size() != 1) {
+				break;
+			}
+
+			Node *node = selection.front()->get();
+			if (!EditableInstanceApply::is_editable_child(node)) {
+				break;
+			}
+
+			EditableInstanceApply::ApplyResult result = EditableInstanceApply::apply_subtree(node);
+			if (result.error != OK && !result.message.is_empty()) {
+				EditorNode::get_singleton()->show_warning(result.message);
 			}
 		} break;
 		case TOOL_SCENE_USE_PLACEHOLDER: {
@@ -4038,6 +4059,13 @@ void SceneTreeDock::_tree_rmb(const Vector2 &p_menu_pos) {
 			menu->set_item_shortcut(menu->get_item_index(TOOL_TOGGLE_SCENE_UNIQUE_NAME), ED_GET_SHORTCUT("scene_tree/toggle_unique_name"));
 			menu->set_item_checked(menu->get_item_index(TOOL_TOGGLE_SCENE_UNIQUE_NAME), node->is_unique_name_in_owner());
 		}
+		END_SECTION()
+	}
+
+	if (profile_allow_editing && selection.size() == 1 && EditableInstanceApply::is_editable_child(selection.front()->get())) {
+		BEGIN_SECTION()
+		menu->add_item(TTR("Apply to Original"), TOOL_SCENE_APPLY_TO_ORIGINAL);
+		menu->set_item_disabled(menu->get_item_index(TOOL_SCENE_APPLY_TO_ORIGINAL), EditableInstanceApply::count_overrides_in_subtree(selection.front()->get()) == 0);
 		END_SECTION()
 	}
 

@@ -45,6 +45,7 @@
 #include "editor/inspector/editor_property_name_processor.h"
 #include "editor/inspector/editor_resource_picker.h"
 #include "editor/inspector/multi_node_edit.h"
+#include "editor/scene/editable_instance_apply.h"
 #include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_feature_profile.h"
 #include "editor/settings/editor_settings.h"
@@ -861,6 +862,11 @@ void EditorProperty::update_editor_property_status() {
 
 	Variant current = object->get(_get_revert_property());
 	bool new_can_revert = EditorPropertyRevert::can_property_revert(object, property, &current) && !is_read_only();
+	bool new_can_apply_to_original = false;
+	if (show_apply_to_original) {
+		Node *node = Object::cast_to<Node>(object);
+		new_can_apply_to_original = node && EditableInstanceApply::has_property_override(node, property) && !is_read_only();
+	}
 
 	bool new_checked = checked;
 	if (checkable) { // for properties like theme overrides.
@@ -871,12 +877,13 @@ void EditorProperty::update_editor_property_status() {
 		}
 	}
 
-	if (new_can_revert != can_revert || new_pinned != pinned || new_checked != checked || new_warning != draw_prop_warning) {
+	if (new_can_revert != can_revert || new_can_apply_to_original != can_apply_to_original || new_pinned != pinned || new_checked != checked || new_warning != draw_prop_warning) {
 		if (new_can_revert != can_revert) {
 			emit_signal(SNAME("property_can_revert_changed"), property, new_can_revert);
 		}
 		draw_prop_warning = new_warning;
 		can_revert = new_can_revert;
+		can_apply_to_original = new_can_apply_to_original;
 		pinned = new_pinned;
 		checked = new_checked;
 		queue_redraw();
@@ -1346,6 +1353,12 @@ static bool _is_value_potential_override(Node *p_node, const String &p_property)
 void EditorProperty::_update_flags() {
 	can_pin = false;
 	pin_hidden = true;
+	show_apply_to_original = false;
+	can_apply_to_original = false;
+
+	if (Node *node = Object::cast_to<Node>(object)) {
+		show_apply_to_original = EditableInstanceApply::can_show_apply_to_original(node, property);
+	}
 
 	if (read_only) {
 		return;
@@ -1453,6 +1466,18 @@ void EditorProperty::menu_option(int p_option) {
 			ERR_FAIL_COND(!is_valid_revert);
 			emit_changed(_get_revert_property(), revert_value);
 			update_property();
+		} break;
+		case MENU_APPLY_TO_ORIGINAL: {
+			accept_event();
+			get_viewport()->gui_release_focus();
+			Node *node = Object::cast_to<Node>(object);
+			ERR_FAIL_NULL(node);
+			EditableInstanceApply::ApplyResult result = EditableInstanceApply::apply_property(node, property);
+			if (result.error != OK && !result.message.is_empty()) {
+				EditorNode::get_singleton()->show_warning(result.message);
+			}
+			update_property();
+			update_editor_property_status();
 		} break;
 		case MENU_OPEN_DOCUMENTATION: {
 			ScriptEditor::get_singleton()->goto_help(doc_path);
@@ -1609,7 +1634,7 @@ void EditorProperty::_update_popup() {
 		}
 		menu->set_item_tooltip(menu->get_item_index(MENU_PIN_VALUE), TTR("Pinning a value forces it to be saved even if it's equal to the default."));
 	}
-	if (deletable || can_revert || can_override) {
+	if (deletable || can_revert || can_override || show_apply_to_original) {
 		menu->add_separator();
 		if (can_override) {
 			menu->add_icon_item(theme_cache.override_icon, TTRC("Override for Project"), MENU_OVERRIDE_FOR_PROJECT);
@@ -1619,6 +1644,10 @@ void EditorProperty::_update_popup() {
 		}
 		if (can_revert) {
 			menu->add_icon_item(theme_cache.revert_icon, TTR("Revert Value"), MENU_REVERT_VALUE);
+		}
+		if (show_apply_to_original) {
+			menu->add_icon_item(theme_cache.revert_icon, TTR("Apply to Original"), MENU_APPLY_TO_ORIGINAL);
+			menu->set_item_disabled(menu->get_item_index(MENU_APPLY_TO_ORIGINAL), !can_apply_to_original);
 		}
 	}
 	if (!doc_path.is_empty() && ScriptEditor::get_singleton() && EditorNode::get_singleton()) {

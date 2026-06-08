@@ -58,6 +58,7 @@ class TextureProgressBar;
 class Timer;
 class Translation;
 class Tree;
+class EditableInstanceApply;
 class VBoxContainer;
 class VSplitContainer;
 class Window;
@@ -117,6 +118,7 @@ struct EditorProgress {
 
 class EditorNode : public Node {
 	GDCLASS(EditorNode, Node);
+	friend class EditableInstanceApply;
 
 public:
 	enum SceneNameCasing {

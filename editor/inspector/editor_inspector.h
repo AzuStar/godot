@@ -125,6 +125,7 @@ public:
 		MENU_PIN_VALUE,
 		MENU_DELETE,
 		MENU_REVERT_VALUE,
+		MENU_APPLY_TO_ORIGINAL,
 		MENU_OPEN_DOCUMENTATION,
 	};
 
@@ -176,6 +177,8 @@ private:
 	bool delete_hover = false;
 
 	bool can_revert = false;
+	bool show_apply_to_original = false;
+	bool can_apply_to_original = false;
 	bool can_pin = false;
 	bool pin_hidden = false;
 	bool pinned = false;
