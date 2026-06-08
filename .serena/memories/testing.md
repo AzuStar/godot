@@ -1,5 +1,8 @@
 # Testing
 
+- In this repo run tests through the built binary with writable XDG paths, e.g. `XDG_CACHE_HOME=/tmp XDG_CONFIG_HOME=/tmp XDG_DATA_HOME=/tmp bin/godot.linuxbsd.editor.dev.x86_64 --headless --test`.
+- Sandbox/host may break network/IPC/HOME-dependent tests. Verified passing filter: `--test-case-exclude='*[IP]*,*[Logger]*,*[TCPServer]*,*[UDPServer]*,*[UDSServer]*,*[StreamPeerTCP]*,*[HTTPClient]*'` -> 1250 passed, 0 failed.
+
 - C++ tests are doctest-based. Build with `tests=yes`; `dev_mode=yes` also enables tests unless overridden.
 - Test library source: `tests/SCsub`; main runner: `tests/test_main.cpp`; helpers/macros: `tests/test_macros.h`, `tests/test_utils.*`.
 - Runtime entry is engine binary with `--test`; `test_main()` strips `--test` before passing remaining args to doctest.

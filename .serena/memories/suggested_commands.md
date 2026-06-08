@@ -1,10 +1,10 @@
 # Suggested Commands
 
 Build:
-- `scons platform=linuxbsd target=editor dev_mode=yes` -> local Linux editor dev build with tests/werror/strict checks defaults.
-- `scons platform=linuxbsd target=editor tests=yes` -> build tests without all dev-mode defaults.
-- `scons platform=linuxbsd target=editor compiledb=yes` -> generate `compile_commands.json` for clang tooling.
-- `scons platform=linuxbsd target=editor ninja=yes` -> generate/run ninja backend if SCons >= 4.2.
+- `./.venv/bin/python -m SCons platform=linuxbsd target=editor dev_mode=yes` -> local Linux editor dev build with tests/werror/strict checks defaults.
+- `./.venv/bin/python -m SCons platform=linuxbsd target=editor tests=yes` -> build tests without all dev-mode defaults.
+- `./.venv/bin/python -m SCons platform=linuxbsd target=editor compiledb=yes` -> generate `compile_commands.json` for clang tooling.
+- `./.venv/bin/python -m SCons platform=linuxbsd target=editor ninja=yes` -> generate/run ninja backend if SCons >= 4.2.
 
 Run tests after building with `tests=yes`:
 - `bin/godot.linuxbsd.editor.dev.x86_64 --test` -> likely dev editor test binary name on Linux x86_64; verify exact suffix in `bin/` if build options differ.

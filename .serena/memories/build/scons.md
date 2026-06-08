@@ -1,5 +1,9 @@
 # SCons Build
 
+- Local repo SCons lives in `.venv`. Prefer `./.venv/bin/python -m SCons ...`; bare `scons` may be absent, and `.venv/bin/scons` may fail from a broken launcher/shebang.
+- Verified local build command: `./.venv/bin/python -m SCons platform=linuxbsd target=editor dev_build=yes tests=yes -j2`.
+- Observed build warning: `wayland-scanner not found. Disabling Wayland support.`
+
 - Requires SCons >= 4.0 and Python >= 3.8 (`SConstruct`).
 - Main options live in `SConstruct`; custom option files load from `custom.py` and `profile=<path>`.
 - Common local build form: `scons platform=linuxbsd target=editor` plus options.
